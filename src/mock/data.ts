@@ -1,0 +1,386 @@
+import {
+  Province,
+  RoadSegment,
+  TollStation,
+  VehicleRecord,
+  WarningEvent,
+  TrafficFlowData,
+  EvasionCase,
+  WeeklyReport,
+  DataSource,
+  DiversionStrategy,
+} from '@/types'
+import dayjs from 'dayjs'
+
+export const provinces: Province[] = [
+  { code: 'GD', name: '广东省', flow: 12586432, toll: 895632540, congestionIndex: 0.42 },
+  { code: 'JS', name: '江苏省', flow: 10245789, toll: 756423180, congestionIndex: 0.38 },
+  { code: 'ZJ', name: '浙江省', flow: 9876543, toll: 698547210, congestionIndex: 0.41 },
+  { code: 'SD', name: '山东省', flow: 8765432, toll: 598745632, congestionIndex: 0.35 },
+  { code: 'HN', name: '河南省', flow: 7654321, toll: 521456321, congestionIndex: 0.33 },
+  { code: 'SC', name: '四川省', flow: 6543210, toll: 456789123, congestionIndex: 0.36 },
+  { code: 'HB', name: '湖北省', flow: 5876543, toll: 412569874, congestionIndex: 0.34 },
+  { code: 'FJ', name: '福建省', flow: 5432109, toll: 385698741, congestionIndex: 0.32 },
+  { code: 'SN', name: '陕西省', flow: 4876543, toll: 345698741, congestionIndex: 0.31 },
+  { code: 'LN', name: '辽宁省', flow: 4321098, toll: 298745632, congestionIndex: 0.29 },
+]
+
+export const roadSegments: RoadSegment[] = [
+  {
+    id: 'G4-GD',
+    name: '京港澳高速（广东段）',
+    province: '广东省',
+    startPoint: '广州',
+    endPoint: '深圳',
+    length: 120,
+    lanes: 8,
+    flow: 125680,
+    avgSpeed: 78,
+    congestionIndex: 0.45,
+    toll: 12568420,
+    status: 'normal',
+  },
+  {
+    id: 'G15-GD',
+    name: '沈海高速（广东段）',
+    province: '广东省',
+    startPoint: '佛山',
+    endPoint: '湛江',
+    length: 350,
+    lanes: 6,
+    flow: 89650,
+    avgSpeed: 85,
+    congestionIndex: 0.32,
+    toll: 8965230,
+    status: 'normal',
+  },
+  {
+    id: 'G2518-GD',
+    name: '深岑高速',
+    province: '广东省',
+    startPoint: '深圳',
+    endPoint: '江门',
+    length: 180,
+    lanes: 6,
+    flow: 78560,
+    avgSpeed: 62,
+    congestionIndex: 0.85,
+    toll: 7856320,
+    status: 'congested',
+  },
+  {
+    id: 'G94-GD',
+    name: '珠三角环线高速',
+    province: '广东省',
+    startPoint: '东莞',
+    endPoint: '珠海',
+    length: 220,
+    lanes: 8,
+    flow: 95640,
+    avgSpeed: 72,
+    congestionIndex: 0.55,
+    toll: 9564120,
+    status: 'warning',
+  },
+  {
+    id: 'G45-GD',
+    name: '大广高速（广东段）',
+    province: '广东省',
+    startPoint: '广州',
+    endPoint: '韶关',
+    length: 280,
+    lanes: 6,
+    flow: 65430,
+    avgSpeed: 90,
+    congestionIndex: 0.28,
+    toll: 6543210,
+    status: 'normal',
+  },
+]
+
+export const tollStations: TollStation[] = [
+  {
+    id: 'S001',
+    name: '广州太和站',
+    segmentId: 'G4-GD',
+    province: '广东省',
+    lanes: 12,
+    flow: 15680,
+    avgWaitTime: 45,
+    efficiency: 92,
+    toll: 1568420,
+    lat: 23.16,
+    lng: 113.35,
+  },
+  {
+    id: 'S002',
+    name: '深圳龙华站',
+    segmentId: 'G4-GD',
+    province: '广东省',
+    lanes: 10,
+    flow: 14560,
+    avgWaitTime: 52,
+    efficiency: 88,
+    toll: 1456320,
+    lat: 22.68,
+    lng: 114.05,
+  },
+  {
+    id: 'S003',
+    name: '东莞长安站',
+    segmentId: 'G4-GD',
+    province: '广东省',
+    lanes: 8,
+    flow: 12890,
+    avgWaitTime: 38,
+    efficiency: 95,
+    toll: 1289650,
+    lat: 22.82,
+    lng: 113.78,
+  },
+  {
+    id: 'S004',
+    name: '佛山谢边站',
+    segmentId: 'G15-GD',
+    province: '广东省',
+    lanes: 10,
+    flow: 11250,
+    avgWaitTime: 42,
+    efficiency: 90,
+    toll: 1125890,
+    lat: 23.05,
+    lng: 113.12,
+  },
+  {
+    id: 'S005',
+    name: '深圳福田站',
+    segmentId: 'G2518-GD',
+    province: '广东省',
+    lanes: 14,
+    flow: 18960,
+    avgWaitTime: 85,
+    efficiency: 65,
+    toll: 1896540,
+    lat: 22.54,
+    lng: 114.02,
+  },
+]
+
+const plateNumbers = ['粤A12345', '粤B67890', '粤C11111', '粤D22222', '粤E33333', '粤F44444', '粤G55555', '粤H66666']
+
+export const vehicleRecords: VehicleRecord[] = plateNumbers.map((plate, i) => ({
+  id: `VR${i + 1}`,
+  plateNumber: plate,
+  vehicleType: i % 5 + 1,
+  entryStation: tollStations[i % 3].name,
+  exitStation: tollStations[(i + 2) % 5].name,
+  entryTime: dayjs().subtract(i * 30, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+  exitTime: dayjs().subtract((i - 1) * 30, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+  distance: 50 + i * 10,
+  toll: 25 + i * 5,
+  etcTransaction: i % 2 === 0,
+  weight: 2 + (i % 4) * 1.5,
+  overloaded: i === 3 || i === 5,
+  evasionRisk: Math.random() * 100,
+}))
+
+export const warningEvents: WarningEvent[] = [
+  {
+    id: 'W001',
+    type: 'congestion',
+    level: 'primary',
+    title: '深岑高速严重拥堵',
+    description: '深岑高速K56-K78段连续15分钟拥堵指数超过0.8，建议启动分流方案',
+    location: '深岑高速深圳方向K62处',
+    timestamp: dayjs().subtract(12, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+    status: 'confirmed',
+    approvals: [
+      {
+        id: 'A001',
+        role: 'monitor',
+        userId: '1',
+        userName: '监控员张三',
+        action: 'approve',
+        comment: '已核实，现场车流量确实较大',
+        timestamp: dayjs().subtract(8, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+      },
+    ],
+  },
+  {
+    id: 'W002',
+    type: 'efficiency',
+    level: 'secondary',
+    title: '深圳福田站通行效率下降',
+    description: '深圳福田收费站通行效率较昨日同期下降35%，建议加开人工车道',
+    location: '深圳福田收费站',
+    timestamp: dayjs().subtract(25, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+    status: 'reviewed',
+    approvals: [
+      {
+        id: 'A002',
+        role: 'monitor',
+        userId: '1',
+        userName: '监控员李四',
+        action: 'approve',
+        comment: '已确认，ETC车道故障导致',
+        timestamp: dayjs().subtract(20, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+      },
+      {
+        id: 'A003',
+        role: 'director',
+        userId: '2',
+        userName: '路段主任王五',
+        action: 'approve',
+        comment: '同意加开车道，已通知现场',
+        timestamp: dayjs().subtract(15, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+      },
+    ],
+  },
+  {
+    id: 'W003',
+    type: 'evasion',
+    level: 'tertiary',
+    title: '疑似逃费车辆频繁出现',
+    description: '检测到车牌号粤D22222近30天内有5次疑似U型行驶逃费记录',
+    location: '广东省内多路段',
+    timestamp: dayjs().subtract(2, 'hour').format('YYYY-MM-DD HH:mm:ss'),
+    status: 'pending',
+    approvals: [],
+  },
+]
+
+export const generateTrafficFlowData = (days: number = 7): TrafficFlowData[] => {
+  const data: TrafficFlowData[] = []
+  for (let i = days * 24; i >= 0; i--) {
+    const time = dayjs().subtract(i, 'hour')
+    const hour = time.hour()
+    const baseFlow = hour >= 7 && hour <= 9 ? 12000 : hour >= 17 && hour <= 19 ? 13000 : 8000
+    data.push({
+      time: time.format('MM-DD HH:mm'),
+      flow: baseFlow + Math.random() * 3000,
+      avgSpeed: 60 + Math.random() * 40,
+      congestionIndex: 0.2 + Math.random() * 0.5,
+    })
+  }
+  return data
+}
+
+export const vehicleTypeDistribution = [
+  { type: '客车一类', count: 45680, percentage: 45.2 },
+  { type: '客车二类', count: 23450, percentage: 23.2 },
+  { type: '货车一类', count: 15680, percentage: 15.5 },
+  { type: '货车二类', count: 8960, percentage: 8.9 },
+  { type: '专项作业车', count: 7230, percentage: 7.2 },
+]
+
+export const evasionCases: EvasionCase[] = [
+  {
+    id: 'E001',
+    plateNumber: '粤D22222',
+    vehicleType: 1,
+    riskScore: 92,
+    suspectedType: 'U型行驶',
+    firstDetected: dayjs().subtract(30, 'day').format('YYYY-MM-DD'),
+    lastSeen: dayjs().subtract(1, 'day').format('YYYY-MM-DD'),
+    totalLoss: 2580,
+    status: 'investigating',
+  },
+  {
+    id: 'E002',
+    plateNumber: '粤F44444',
+    vehicleType: 3,
+    riskScore: 85,
+    suspectedType: '大车小标',
+    firstDetected: dayjs().subtract(45, 'day').format('YYYY-MM-DD'),
+    lastSeen: dayjs().subtract(2, 'day').format('YYYY-MM-DD'),
+    totalLoss: 5680,
+    status: 'confirmed',
+  },
+  {
+    id: 'E003',
+    plateNumber: '粤G55555',
+    vehicleType: 2,
+    riskScore: 78,
+    suspectedType: '遮挡车牌',
+    firstDetected: dayjs().subtract(20, 'day').format('YYYY-MM-DD'),
+    lastSeen: dayjs().subtract(3, 'day').format('YYYY-MM-DD'),
+    totalLoss: 1890,
+    status: 'investigating',
+  },
+  {
+    id: 'E004',
+    plateNumber: '粤H66666',
+    vehicleType: 4,
+    riskScore: 95,
+    suspectedType: '倒卡逃费',
+    firstDetected: dayjs().subtract(60, 'day').format('YYYY-MM-DD'),
+    lastSeen: dayjs().subtract(1, 'day').format('YYYY-MM-DD'),
+    totalLoss: 12560,
+    status: 'resolved',
+  },
+]
+
+export const weeklyReports: WeeklyReport[] = [
+  {
+    id: 'R001',
+    week: '2024年第23周',
+    startDate: '2024-06-03',
+    endDate: '2024-06-09',
+    totalFlow: 89562341,
+    totalToll: 6852365478,
+    avgCongestionIndex: 0.38,
+    congestionEvents: 156,
+    congestionYoY: -8.5,
+    congestionQoQ: -3.2,
+    auditEfficiency: 85.6,
+    accidentBlackSpots: [
+      { id: 'B001', location: '京港澳高速K125处', accidentCount: 8, severity: 'high', lastAccident: '2024-06-08' },
+      { id: 'B002', location: '沈海高速K356处', accidentCount: 5, severity: 'medium', lastAccident: '2024-06-07' },
+      { id: 'B003', location: '深岑高速K62处', accidentCount: 4, severity: 'medium', lastAccident: '2024-06-05' },
+    ],
+    maintenanceRecommendations: [
+      '建议对京港澳高速K120-K130段进行路面检修',
+      '建议在事故多发段增加警示标识',
+      '建议对深岑高速部分路段进行扩容改造',
+    ],
+    auditStrategies: [
+      '重点稽查疑似大车小标车辆',
+      '加强夜间时段逃费稽查力度',
+      '建立逃费车辆黑名单共享机制',
+    ],
+  },
+]
+
+export const dataSources: DataSource[] = [
+  { id: 'DS001', name: 'ETC交易数据', type: 'etc', status: 'online', recordsPerSecond: 12560, lastUpdate: dayjs().format('YYYY-MM-DD HH:mm:ss') },
+  { id: 'DS002', name: '门架车牌识别', type: 'gantry', status: 'online', recordsPerSecond: 18960, lastUpdate: dayjs().format('YYYY-MM-DD HH:mm:ss') },
+  { id: 'DS003', name: '称重检测数据', type: 'weight', status: 'warning', recordsPerSecond: 3250, lastUpdate: dayjs().subtract(2, 'minute').format('YYYY-MM-DD HH:mm:ss') },
+  { id: 'DS004', name: '视频监控数据', type: 'video', status: 'online', recordsPerSecond: 5680, lastUpdate: dayjs().format('YYYY-MM-DD HH:mm:ss') },
+]
+
+export const diversionStrategies: DiversionStrategy[] = [
+  {
+    id: 'DS01',
+    name: '方案A：周边国省道分流',
+    description: '引导车辆从邻近出口驶出，绕行G107国道',
+    affectedSegments: ['G2518-GD'],
+    estimatedFlowReduction: 25,
+    cost: 50000,
+  },
+  {
+    id: 'DS02',
+    name: '方案B：高速公路网内分流',
+    description: '引导车辆通过G9411莞佛高速绕行',
+    affectedSegments: ['G2518-GD', 'G9411-GD'],
+    estimatedFlowReduction: 35,
+    cost: 80000,
+  },
+  {
+    id: 'DS03',
+    name: '方案C：组合分流策略',
+    description: '同时启用国省道和高速网内分流',
+    affectedSegments: ['G2518-GD', 'G9411-GD', 'G4-GD'],
+    estimatedFlowReduction: 45,
+    cost: 120000,
+  },
+]
