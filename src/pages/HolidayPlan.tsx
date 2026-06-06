@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Row,
   Col,
@@ -17,6 +17,7 @@ import {
   Space,
   List,
   Progress,
+  Alert,
 } from 'antd'
 import {
   UploadOutlined,
@@ -28,8 +29,10 @@ import {
   ArrowUpOutlined,
   ThunderboltOutlined,
   BarChartOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
+import { EChartsOption } from 'echarts'
 import { RcFile } from 'antd/es/upload'
 import * as XLSX from 'xlsx'
 import dayjs from 'dayjs'
@@ -39,18 +42,37 @@ import type { HolidayPlan } from '@/types'
 
 const { RangePicker } = DatePicker
 const { Option } = Select
+const STORAGE_KEY = 'highway_holiday_plans'
 
-const HolidayPlan = () => {
-  const [plans, setPlans] = useState<HolidayPlan[]>([
+const loadPlansFromStorage = (): HolidayPlan[] => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) return JSON.parse(stored)
+  } catch (e) {
+    console.error('加载方案失败', e)
+  }
+  return [
     {
       id: '1',
       name: '2024年端午节免费通行方案',
-      startDate: '2024-06-10',
-      endDate: '2024-06-12',
+      startDate: dayjs().add(2, 'day').format('YYYY-MM-DD'),
+      endDate: dayjs().add(4, 'day').format('YYYY-MM-DD'),
       vehicleTypes: [1, 2],
       freeToll: true,
     }
-  ])
+  ]
+}
+
+const savePlansToStorage = (plans: HolidayPlan[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(plans))
+  } catch (e) {
+    console.error('保存方案失败', e)
+  }
+}
+
+const HolidayPlan = () => {
+  const [plans, setPlans] = useState<HolidayPlan[]>(loadPlansFromStorage)
   const [selectedPlan, setSelectedPlan] = useState<HolidayPlan | null>(null)
   const [predictions, setPredictions] = useState<any[]>([])
   const [tollLoss, setTollLoss] = useState<any[]>([])
@@ -58,41 +80,82 @@ const HolidayPlan = () => {
   const [addModalVisible, setAddModalVisible] = useState(false)
   const [form] = Form.useForm()
   const [uploading, setUploading] = useState(false)
+  const [seed, setSeed] = useState(0)
 
-  const generatePredictionData = (plan: HolidayPlan) => {
+  useEffect(() => {
+    savePlansToStorage(plans)
+  }, [plans])
+
+  const seededRandom = (base: number, variance: number, s: number) => {
+    const x = Math.sin(s) * 10000
+    return base + (x - Math.floor(x)) * variance
+  }
+
+  const generatePredictionData = (plan: HolidayPlan, s: number = Date.now()) => {
     const data: any[] = []
     const start = dayjs(plan.startDate)
+    const isWeekend = start.day() === 0 || start.day() === 6
+
     for (let i = 0; i < 48; i++) {
       const time = start.add(i, 'hour')
       const hour = time.hour()
-      let baseFlow = 15000
-      if (hour >= 9 && hour <= 11) baseFlow = 22000
-      else if (hour >= 14 && hour <= 16) baseFlow = 20000
-      else if (hour >= 19 && hour <= 21) baseFlow = 21000
-      else if (hour >= 0 && hour <= 5) baseFlow = 8000
+      const dayOfHoliday = Math.floor(i / 24)
+
+      let baseFlow = isWeekend ? 18000 : 15000
+
+      if (dayOfHoliday === 0 && hour >= 9 && hour <= 12) {
+        baseFlow = 32000 + (hour - 9) * 2000
+      } else if (dayOfHoliday === 0 && hour >= 14 && hour <= 18) {
+        baseFlow = 28000
+      } else if (dayOfHoliday === 1 && hour >= 10 && hour <= 16) {
+        baseFlow = 25000
+      } else if (dayOfHoliday === 1 && hour >= 17 && hour <= 21) {
+        baseFlow = 30000
+      } else if (hour >= 0 && hour <= 5) {
+        baseFlow = 7000
+      } else if (hour >= 6 && hour <= 8) {
+        baseFlow = 12000 + (hour - 6) * 3000
+      } else if (hour >= 22 && hour <= 23) {
+        baseFlow = 16000 - (hour - 22) * 3000
+      }
+
+      const flow = seededRandom(baseFlow, 5000, s + i * 137)
 
       data.push({
         time: time.format('MM-DD HH:mm'),
-        predictedFlow: baseFlow + Math.random() * 4000,
+        predictedFlow: Math.round(flow),
       })
     }
     return data
   }
 
-  const generateTollLossData = (plan: HolidayPlan) => {
+  const generateTollLossData = (plan: HolidayPlan, s: number = Date.now()) => {
     const data: any[] = []
     const start = dayjs(plan.startDate)
+    const isWeekend = start.day() === 0 || start.day() === 6
+
     for (let i = 0; i < 48; i++) {
       const time = start.add(i, 'hour')
       const hour = time.hour()
-      let baseLoss = 150000
-      if (hour >= 9 && hour <= 11) baseLoss = 350000
-      else if (hour >= 14 && hour <= 16) baseLoss = 280000
-      else if (hour >= 19 && hour <= 21) baseLoss = 320000
+      const dayOfHoliday = Math.floor(i / 24)
+
+      let baseLoss = isWeekend ? 220000 : 180000
+
+      if (dayOfHoliday === 0 && hour >= 9 && hour <= 12) {
+        baseLoss = 520000 + (hour - 9) * 40000
+      } else if (dayOfHoliday === 0 && hour >= 14 && hour <= 18) {
+        baseLoss = 420000
+      } else if (dayOfHoliday === 1 && hour >= 17 && hour <= 21) {
+        baseLoss = 480000
+      } else if (hour >= 0 && hour <= 5) {
+        baseLoss = 80000
+      }
+
+      const loss = seededRandom(baseLoss, 60000, s + i * 251)
 
       data.push({
-        hour: time.format('HH:mm'),
-        estimatedLoss: baseLoss + Math.random() * 50000,
+        hour: time.format('MM-DD HH:mm'),
+        estimatedLoss: Math.round(loss),
       })
     }
     return data
@@ -107,17 +170,20 @@ const HolidayPlan = () => {
       const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
 
       if (jsonData.length > 0) {
-        const firstRow = jsonData[0]
-        const newPlan: HolidayPlan = {
-          id: String(Date.now()),
-          name: firstRow['方案名称'] || firstRow['name'] || '导入的节假日方案',
-          startDate: firstRow['开始日期'] || firstRow['startDate'] || dayjs().format('YYYY-MM-DD'),
-          endDate: firstRow['结束日期'] || firstRow['endDate'] || dayjs().add(3, 'day').format('YYYY-MM-DD'),
-          vehicleTypes: [1, 2],
-          freeToll: true,
-        }
-        setPlans(prev => [...prev, newPlan])
-        message.success('Excel文件解析成功，已导入方案')
+        const importedPlans: HolidayPlan[] = jsonData.map((row, idx) => {
+          const start = row['开始日期'] || row['startDate'] || dayjs().add(idx, 'day').format('YYYY-MM-DD')
+          const end = row['结束日期'] || row['endDate'] || dayjs().add(idx + 2, 'day').format('YYYY-MM-DD')
+          return {
+            id: String(Date.now()) + idx,
+            name: row['方案名称'] || row['name'] || `节假日方案 ${idx + 1}`,
+            startDate: dayjs(start).isValid() ? dayjs(start).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD'),
+            endDate: dayjs(end).isValid() ? dayjs(end).format('YYYY-MM-DD') : dayjs().add(3, 'day').format('YYYY-MM-DD'),
+            vehicleTypes: [1, 2],
+            freeToll: true,
+          }
+        })
+        setPlans(prev => [...prev, ...importedPlans])
+        message.success(`成功导入 ${importedPlans.length} 个方案，点击查看预测生成动态数据`)
       }
     } catch (error) {
       message.error('文件解析失败，请检查文件格式')
@@ -128,9 +194,21 @@ const HolidayPlan = () => {
 
   const handleViewPrediction = (plan: HolidayPlan) => {
     setSelectedPlan(plan)
-    setPredictions(generatePredictionData(plan))
-    setTollLoss(generateTollLossData(plan))
+    const newSeed = Date.now()
+    setSeed(newSeed)
+    setPredictions(generatePredictionData(plan, newSeed))
+    setTollLoss(generateTollLossData(plan, newSeed))
     setStrategyModalVisible(true)
+  }
+
+  const handleRefresh = () => {
+    if (selectedPlan) {
+      const newSeed = Date.now()
+      setSeed(newSeed)
+      setPredictions(generatePredictionData(selectedPlan, newSeed))
+      setTollLoss(generateTollLossData(selectedPlan, newSeed))
+      message.success('预测数据已刷新')
+    }
   }
 
   const handleAddPlan = (values: any) => {
@@ -145,21 +223,33 @@ const HolidayPlan = () => {
     setPlans(prev => [...prev, newPlan])
     setAddModalVisible(false)
     form.resetFields()
-    message.success('方案创建成功')
+    message.success('方案创建成功，点击查看预测生成动态数据')
   }
 
-  const predictionOption = {
-    title: { text: '未来48小时流量预测', left: 'center', textStyle: { fontSize: 14 } },
-    tooltip: { trigger: 'axis' },
+  const predictionOption: EChartsOption = {
+    title: {
+      text: selectedPlan
+        ? `${selectedPlan.name} - 未来48小时流量预测 (${selectedPlan.startDate} ~ ${selectedPlan.endDate})`
+        : '未来48小时流量预测',
+      left: 'center',
+      textStyle: { fontSize: 14 }
+    },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const p = params[0]
+        return `时间: ${p.name}<br/>预测流量: ${p.value.toLocaleString()} 辆/小时`
+      }
+    },
     legend: { data: ['预测流量'], bottom: 0 },
-    grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
+    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
       data: predictions.map(d => d.time),
-      axisLabel: { rotate: 45, fontSize: 10 }
+      axisLabel: { rotate: 45, fontSize: 9, interval: 3 }
     },
-    yAxis: { type: 'value', name: '车流量' },
+    yAxis: { type: 'value', name: '车流量(辆/小时)' },
     series: [
       {
         name: '预测流量',
@@ -178,24 +268,27 @@ const HolidayPlan = () => {
         lineStyle: { color: '#1890ff', width: 2 },
         markPoint: {
           data: [
-            { type: 'max', name: '峰值' },
+            { type: 'max', name: '峰值', itemStyle: { color: '#f5222d' } },
           ]
+        },
+        markLine: {
+          data: [{ type: 'average', name: '平均值' }]
         }
       }
     ]
   }
 
-  const tollLossOption = {
+  const tollLossOption: EChartsOption = {
     title: { text: '预计收费损失（按小时）', left: 'center', textStyle: { fontSize: 14 } },
     tooltip: {
       trigger: 'axis',
       formatter: (params: any) => `${params[0].name}<br/>预计损失: ${(params[0].value / 10000).toFixed(1)}万元`
     },
-    grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
+    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
     xAxis: {
       type: 'category',
       data: tollLoss.map(d => d.hour),
-      axisLabel: { rotate: 45, fontSize: 10 }
+      axisLabel: { rotate: 45, fontSize: 9, interval: 3 }
     },
     yAxis: {
       type: 'value',
@@ -221,6 +314,9 @@ const HolidayPlan = () => {
 
   const peakFlow = predictions.length > 0 ? Math.max(...predictions.map(d => d.predictedFlow)) : 0
   const totalLoss = tollLoss.reduce((sum, d) => sum + d.estimatedLoss, 0)
+  const peakHour = predictions.length > 0
+    ? predictions[predictions.findIndex(d => d.predictedFlow === peakFlow)]?.time
+    : '-'
 
   const columns = [
     { title: '方案名称', dataIndex: 'name', key: 'name', render: (t: string) => <span className="font-medium">{t}</span> },
@@ -253,7 +349,7 @@ const HolidayPlan = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">节假日通行方案</h1>
-          <p className="text-gray-500 text-sm mt-1">节假日免费通行方案管理与流量预测</p>
+          <p className="text-gray-500 text-sm mt-1">节假日免费通行方案管理与流量预测（数据基于方案日期动态生成）</p>
         </div>
         <Space>
           <Upload
@@ -271,12 +367,19 @@ const HolidayPlan = () => {
         </Space>
       </div>
 
-      <Card className="data-card" title="节假日方案列表">
+      <Alert
+        type="info"
+        showIcon
+        message="💡 数据说明"
+        description="导入或新建方案后，点击『查看预测』将基于方案的开始日期动态生成未来48小时的流量预测曲线和收费损失条形图。每次打开都会基于当前时间重新计算，模拟真实的预测系统。"
+      />
+
+      <Card className="data-card" title="节假日方案列表（数据持久化到localStorage）">
         <Table
           columns={columns}
           dataSource={plans}
           rowKey="id"
-          pagination={false}
+          pagination={{ pageSize: 5 }}
         />
       </Card>
 
@@ -349,9 +452,14 @@ const HolidayPlan = () => {
 
       <Modal
         title={
-          <div className="flex items-center gap-2">
-            <FundProjectionScreenOutlined className="text-blue-500" />
-            {selectedPlan?.name} - 流量预测与分流策略
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FundProjectionScreenOutlined className="text-blue-500" />
+              {selectedPlan?.name} - 流量预测与分流策略
+            </div>
+            <Button size="small" icon={<ReloadOutlined />} onClick={handleRefresh}>
+              刷新预测
+            </Button>
           </div>
         }
         open={strategyModalVisible}
@@ -361,6 +469,13 @@ const HolidayPlan = () => {
       >
         {selectedPlan && (
           <div className="space-y-4">
+            <Alert
+              type="success"
+              showIcon
+              message={`预测时间范围：${selectedPlan.startDate} 00:00 ~ ${dayjs(selectedPlan.startDate).add(2, 'day').format('YYYY-MM-DD')} 23:59（48小时）`}
+              description="数据基于方案日期和历史节假日模式动态生成，模拟真实的交通流量预测系统"
+            />
+
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={6}>
                 <Card size="small">
@@ -398,7 +513,7 @@ const HolidayPlan = () => {
                 <Card size="small">
                   <Statistic
                     title={<span className="flex items-center gap-1"><ThunderboltOutlined /> 高峰时段</span>}
-                    value="9:00-11:00"
+                    value={peakHour}
                     valueStyle={{ color: '#722ed1' }}
                   />
                 </Card>

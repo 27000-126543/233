@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Row,
   Col,
@@ -14,6 +14,7 @@ import {
   Statistic,
   Space,
   message,
+  Alert,
 } from 'antd'
 import {
   WarningOutlined,
@@ -23,8 +24,10 @@ import {
   CheckOutlined,
   CloseOutlined,
   ClockCircleOutlined,
+  SyncOutlined,
+  SaveOutlined,
 } from '@ant-design/icons'
-import { warningEvents } from '@/mock/data'
+import { roadSegments, tollStations, warningEvents } from '@/mock/data'
 import { WarningEvent, ApprovalRecord } from '@/types'
 import dayjs from 'dayjs'
 import { useAuthStore } from '@/store/auth'
@@ -32,13 +35,87 @@ import { useAuthStore } from '@/store/auth'
 const { Step } = Steps
 const { TextArea } = Input
 
+const STORAGE_KEY = 'highway_warnings'
+
+const loadWarningsFromStorage = (): WarningEvent[] => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      return JSON.parse(stored)
+    }
+  } catch (e) {
+    console.error('加载预警数据失败', e)
+  }
+  return [...warningEvents]
+}
+
+const saveWarningsToStorage = (warnings: WarningEvent[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(warnings))
+  } catch (e) {
+    console.error('保存预警数据失败', e)
+  }
+}
+
 const EarlyWarning = () => {
   const user = useAuthStore((state) => state.user)
-  const [warnings, setWarnings] = useState<WarningEvent[]>(warningEvents)
+  const [warnings, setWarnings] = useState<WarningEvent[]>(loadWarningsFromStorage)
   const [selectedWarning, setSelectedWarning] = useState<WarningEvent | null>(null)
   const [detailModalVisible, setDetailModalVisible] = useState(false)
   const [approvalModalVisible, setApprovalModalVisible] = useState(false)
+  const [autoWarningEnabled, setAutoWarningEnabled] = useState(true)
+  const [congestionAboveThreshold, setCongestionAboveThreshold] = useState<string[]>([])
+  const [efficiencyBelowThreshold, setEfficiencyBelowThreshold] = useState<string[]>([])
   const [form] = Form.useForm()
+
+  useEffect(() => {
+    saveWarningsToStorage(warnings)
+  }, [warnings])
+
+  const generateWarning = useCallback((type: 'congestion' | 'efficiency', targetId: string, targetName: string, value: number) => {
+    const warningId = `W-${type}-${targetId}-${dayjs().format('YYYYMMDDHHmmss')}`
+    const existingWarning = warnings.find(w => w.id.startsWith(`W-${type}-${targetId}`) && (w.status === 'pending' || w.status === 'confirmed' || w.status === 'reviewed'))
+    if (existingWarning) return
+
+    const newWarning: WarningEvent = {
+      id: warningId,
+      type,
+      level: 'primary',
+      title: type === 'congestion'
+        ? `${targetName} 拥堵指数超过0.8`
+        : `${targetName} 通行效率低于70%`,
+      description: type === 'congestion'
+        ? `${targetName} 持续拥堵，当前拥堵指数 ${value.toFixed(2)}，超过阈值0.8，请及时处置。`
+        : `${targetName} 通行效率下降至 ${value.toFixed(1)}%，低于阈值70%，可能存在ETC设备故障或车道关闭。`,
+      location: targetName,
+      timestamp: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      status: 'pending',
+      approvals: [],
+      segmentId: type === 'congestion' ? targetId : undefined,
+      stationId: type === 'efficiency' ? targetId : undefined,
+    }
+
+    setWarnings(prev => [newWarning, ...prev])
+    message.warning(`自动预警：${newWarning.title}`)
+  }, [warnings])
+
+  useEffect(() => {
+    if (!autoWarningEnabled) return
+
+    const interval = setInterval(() => {
+      const congestedSegments = roadSegments.filter(s => s.congestionIndex > 0.8)
+      const congestedNames = congestedSegments.map(s => s.name)
+      setCongestionAboveThreshold(congestedNames)
+      congestedSegments.forEach(seg => generateWarning('congestion', seg.id, seg.name, seg.congestionIndex))
+
+      const lowEfficiencyStations = tollStations.filter(s => s.efficiency < 70)
+      const lowEffNames = lowEfficiencyStations.map(s => s.name)
+      setEfficiencyBelowThreshold(lowEffNames)
+      lowEfficiencyStations.forEach(st => generateWarning('efficiency', st.id, st.name, st.efficiency))
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [autoWarningEnabled, generateWarning])
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -166,6 +243,24 @@ const EarlyWarning = () => {
     })
   }
 
+  const handleMarkResolved = (id: string) => {
+    setWarnings(prev => prev.map(w =>
+      w.id === id ? { ...w, status: 'resolved' as const } : w
+    ))
+    message.success('预警已标记为已处理')
+  }
+
+  const handleClearAll = () => {
+    Modal.confirm({
+      title: '确认清除所有预警？',
+      content: '此操作将清空所有预警记录，但不会影响自动预警功能。',
+      onOk: () => {
+        setWarnings([])
+        message.success('已清除所有预警记录')
+      }
+    })
+  }
+
   const columns = [
     {
       title: '预警类型',
@@ -197,7 +292,11 @@ const EarlyWarning = () => {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => <Tag>{getStatusName(status)}</Tag>,
+      render: (status: string) => (
+        <Tag color={status === 'resolved' ? 'green' : status === 'approved' ? 'blue' : 'gold'}>
+          {getStatusName(status)}
+        </Tag>
+      ),
     },
     {
       title: '操作',
@@ -212,6 +311,11 @@ const EarlyWarning = () => {
               审批
             </Button>
           )}
+          {(record.status === 'approved' || record.status === 'resolved') && (
+            <Button type="link" size="small" onClick={() => handleMarkResolved(record.id)} disabled={record.status === 'resolved'}>
+              标记处理
+            </Button>
+          )}
         </Space>
       )
     }
@@ -223,10 +327,44 @@ const EarlyWarning = () => {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">预警中心</h1>
-        <p className="text-gray-500 text-sm mt-1">拥堵预警、通行效率预警与三级审批流程管理</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">预警中心</h1>
+          <p className="text-gray-500 text-sm mt-1">拥堵预警、通行效率预警与三级审批流程管理</p>
+        </div>
+        <Space>
+          <Button
+            icon={<SyncOutlined spin={autoWarningEnabled} />}
+            type={autoWarningEnabled ? 'primary' : 'default'}
+            onClick={() => setAutoWarningEnabled(!autoWarningEnabled)}
+          >
+            {autoWarningEnabled ? '自动预警开启' : '自动预警关闭'}
+          </Button>
+          <Button icon={<SaveOutlined />} onClick={() => { saveWarningsToStorage(warnings); message.success('数据已保存到本地') }}>
+            保存数据
+          </Button>
+          <Button danger onClick={handleClearAll}>
+            清除全部
+          </Button>
+        </Space>
       </div>
+
+      {(congestionAboveThreshold.length > 0 || efficiencyBelowThreshold.length > 0) && (
+        <Alert
+          type="warning"
+          showIcon
+          message={
+            <div className="space-y-1">
+              {congestionAboveThreshold.length > 0 && (
+                <p>⚠️ 当前拥堵路段：{congestionAboveThreshold.join('、')}（拥堵指数 > 0.8）</p>
+              )}
+              {efficiencyBelowThreshold.length > 0 && (
+                <p>⚠️ 当前低效率收费站：{efficiencyBelowThreshold.join('、')}（通行效率 < 70%）</p>
+              )}
+            </div>
+          }
+        />
+      )}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={8}>
@@ -261,7 +399,7 @@ const EarlyWarning = () => {
         </Col>
       </Row>
 
-      <Card className="data-card" title="预警事件列表">
+      <Card className="data-card" title="预警事件列表（自动生成，数据持久化到localStorage）">
         <Table
           columns={columns}
           dataSource={warnings}
