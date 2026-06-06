@@ -210,11 +210,10 @@ const Dashboard = () => {
   }, [liveProvinces, selectedProvince])
 
   const onChartClick = useCallback((params: any) => {
-    if (params.componentType === 'series') {
-      const provinceName = params.name
-      if (provinceName && liveProvinces.some(p => p.name === provinceName)) {
-        handleProvinceClick(provinceName)
-      }
+    console.log('Chart clicked:', params)
+    const provinceName = params.name || params.data?.name
+    if (provinceName && liveProvinces.some(p => p.name === provinceName)) {
+      handleProvinceClick(provinceName)
     }
   }, [liveProvinces, handleProvinceClick])
 
