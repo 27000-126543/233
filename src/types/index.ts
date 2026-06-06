@@ -72,6 +72,8 @@ export interface WarningEvent {
   timestamp: string
   status: 'pending' | 'confirmed' | 'reviewed' | 'approved' | 'resolved'
   approvals: ApprovalRecord[]
+  segmentId?: string
+  stationId?: string
 }
 
 export interface ApprovalRecord {

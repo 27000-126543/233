@@ -80,7 +80,7 @@ const HolidayPlan = () => {
   const [addModalVisible, setAddModalVisible] = useState(false)
   const [form] = Form.useForm()
   const [uploading, setUploading] = useState(false)
-  const [seed, setSeed] = useState(0)
+  const [_seed, setSeed] = useState(0)
 
   useEffect(() => {
     savePlansToStorage(plans)

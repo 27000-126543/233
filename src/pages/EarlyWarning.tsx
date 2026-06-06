@@ -74,30 +74,35 @@ const EarlyWarning = () => {
 
   const generateWarning = useCallback((type: 'congestion' | 'efficiency', targetId: string, targetName: string, value: number) => {
     const warningId = `W-${type}-${targetId}-${dayjs().format('YYYYMMDDHHmmss')}`
-    const existingWarning = warnings.find(w => w.id.startsWith(`W-${type}-${targetId}`) && (w.status === 'pending' || w.status === 'confirmed' || w.status === 'reviewed'))
-    if (existingWarning) return
+    
+    setWarnings(prev => {
+      const existingWarning = prev.find(w => w.id.startsWith(`W-${type}-${targetId}`) && (w.status === 'pending' || w.status === 'confirmed' || w.status === 'reviewed'))
+      if (existingWarning) return prev
 
-    const newWarning: WarningEvent = {
-      id: warningId,
-      type,
-      level: 'primary',
-      title: type === 'congestion'
-        ? `${targetName} 拥堵指数超过0.8`
-        : `${targetName} 通行效率低于70%`,
-      description: type === 'congestion'
-        ? `${targetName} 持续拥堵，当前拥堵指数 ${value.toFixed(2)}，超过阈值0.8，请及时处置。`
-        : `${targetName} 通行效率下降至 ${value.toFixed(1)}%，低于阈值70%，可能存在ETC设备故障或车道关闭。`,
-      location: targetName,
-      timestamp: dayjs().format('YYYY-MM-DD HH:mm:ss'),
-      status: 'pending',
-      approvals: [],
-      segmentId: type === 'congestion' ? targetId : undefined,
-      stationId: type === 'efficiency' ? targetId : undefined,
-    }
+      const newWarning: WarningEvent = {
+        id: warningId,
+        type,
+        level: 'primary',
+        title: type === 'congestion'
+          ? `${targetName} 拥堵指数超过0.8`
+          : `${targetName} 通行效率低于70%`,
+        description: type === 'congestion'
+          ? `${targetName} 持续拥堵，当前拥堵指数 ${value.toFixed(2)}，超过阈值0.8，请及时处置。`
+          : `${targetName} 通行效率下降至 ${value.toFixed(1)}%，低于阈值70%，可能存在ETC设备故障或车道关闭。`,
+        location: targetName,
+        timestamp: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+        status: 'pending',
+        approvals: [],
+        segmentId: type === 'congestion' ? targetId : undefined,
+        stationId: type === 'efficiency' ? targetId : undefined,
+      }
 
-    setWarnings(prev => [newWarning, ...prev])
-    message.warning(`自动预警：${newWarning.title}`)
-  }, [warnings])
+      const newWarnings = [newWarning, ...prev]
+      saveWarningsToStorage(newWarnings)
+      message.warning(`自动预警：${newWarning.title}`)
+      return newWarnings
+    })
+  }, [])
 
   useEffect(() => {
     if (!autoWarningEnabled) return
@@ -356,10 +361,10 @@ const EarlyWarning = () => {
           message={
             <div className="space-y-1">
               {congestionAboveThreshold.length > 0 && (
-                <p>⚠️ 当前拥堵路段：{congestionAboveThreshold.join('、')}（拥堵指数 > 0.8）</p>
+                <p>⚠️ 当前拥堵路段：{congestionAboveThreshold.join('、')}（拥堵指数 {'>'} 0.8）</p>
               )}
               {efficiencyBelowThreshold.length > 0 && (
-                <p>⚠️ 当前低效率收费站：{efficiencyBelowThreshold.join('、')}（通行效率 < 70%）</p>
+                <p>⚠️ 当前低效率收费站：{efficiencyBelowThreshold.join('、')}（通行效率 {'<'} 70%）</p>
               )}
             </div>
           }

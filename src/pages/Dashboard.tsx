@@ -32,7 +32,7 @@ import {
   generateTrafficFlowData,
   vehicleTypeDistribution,
 } from '@/mock/data'
-import { RoadSegment, Province, TrafficFlowData } from '@/types'
+import { RoadSegment, TrafficFlowData } from '@/types'
 import dayjs from 'dayjs'
 
 const { Option } = Select
@@ -209,12 +209,14 @@ const Dashboard = () => {
     }
   }, [liveProvinces, selectedProvince])
 
-  const onChartClick = (params: any) => {
-    if (params.componentType === 'series' && selectedProvince === 'all') {
+  const onChartClick = useCallback((params: any) => {
+    if (params.componentType === 'series') {
       const provinceName = params.name
-      handleProvinceClick(provinceName)
+      if (provinceName && liveProvinces.some(p => p.name === provinceName)) {
+        handleProvinceClick(provinceName)
+      }
     }
-  }
+  }, [liveProvinces, handleProvinceClick])
 
   const tollRankOption = useMemo<EChartsOption>(() => {
     const displayProvinces = selectedProvince === 'all'
@@ -402,9 +404,9 @@ const Dashboard = () => {
     { title: '收费额(元)', dataIndex: 'toll', key: 'toll', render: (v: number) => v.toLocaleString() }
   ]
 
-  const events = {
+  const events = useMemo(() => ({
     click: onChartClick
-  }
+  }), [onChartClick])
 
   return (
     <div className="space-y-4">
